@@ -3,6 +3,7 @@ import openai
 import requests
 import telebot
 import pickle
+import time
 from langchain.vectorstores import FAISS as BaseFAISS
 
 from dotenv import load_dotenv
@@ -52,7 +53,7 @@ def generate_response_chat(message_list):
 
         # Get the most similar documents to the last message
         try:
-            docs = faiss_index.similarity_search(query=last_message["content"], k=2)
+            docs = faiss_index.similarity_search(query=last_message["content"], k=1)
 
             updated_content = last_message["content"] + "\n\n"
             for doc in docs:
@@ -74,7 +75,7 @@ def generate_response_chat(message_list):
     # Send request to GPT-3 (replace with actual GPT-3 API call)
     gpt3_response = openai.ChatCompletion.create(
         model="gpt-4",
-        temperature=0,
+        temperature=0.1,
         messages=[
                      {"role": "system",
                       "content": SYSTEM_PROMPT},
@@ -138,7 +139,7 @@ def start(message):
                               "conversations\nsend text to get replay\nsend voice to do voice"
                               "conversation")
     else:
-        bot.reply_to(message, "Just start chatting to the AI or enter /help for other commands")
+        bot.reply_to(message, "Напишите свой вопрос или /help для других команд")
 
 
 # Define a function to handle voice messages
@@ -213,4 +214,10 @@ if __name__ == "__main__":
     print("Starting bot...")
     print("Bot Started")
     print("Press Ctrl + C to stop bot")
-    bot.polling()
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=0)
+        except Exception as e:
+            print(e)
+            time.sleep(5)
+            continue
