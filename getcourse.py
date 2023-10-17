@@ -91,7 +91,6 @@ def generate_response_chat(message_list):
 def conversation_tracking(text_message, user_id):
     """
     Make remember all the conversation
-    :param old_model: Open AI model
     :param user_id: telegram user id
     :param text_message: text message
     :return: str
@@ -164,19 +163,15 @@ def handle_voice(message):
     r = sr.Recognizer()
     with sr.AudioFile("voice_message.wav") as source:
         audio_data = r.record(source)
-        text = r.recognize_google(audio_data)
+        text = r.recognize_google(audio_data, language='ru-RU')
 
     # Generate response
     replay_text = conversation_tracking(text, user_id)
 
-    # Send the question text back to the user
-    # Send the transcribed text back to the user
-    new_replay_text = "Human: " + text + "\n\n" + "sonic: " + replay_text
-
-    bot.reply_to(message, new_replay_text)
+    bot.reply_to(message, replay_text)
 
     # Use Google Text-to-Speech to convert the text to speech
-    tts = gTTS(replay_text)
+    tts = gTTS(replay_text, lang='ru')
     tts.save("voice_message.mp3")
 
     # Use pydub to convert the MP3 file to the OGG format
