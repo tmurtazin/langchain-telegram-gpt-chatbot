@@ -16,8 +16,6 @@ from langchain.embeddings import OpenAIEmbeddings
 
 load_dotenv()
 
-SYSTEM_PROMPT = os.getenv('SYSTEM_PROMPT')
-
 app = Celery('chatbot', broker=os.getenv('CELERY_BROKER_URL'))
 
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -26,6 +24,14 @@ bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 OPENAI_API_KEY = os.getenv('OPEN_AI_KEY')
 MODEL_NAME = os.getenv('MODEL_NAME')
+DOCUMENTATION_NAME = os.getenv('DOCUMENTATION_NAME')
+SYSTEM_PROMPT = os.getenv('SYSTEM_PROMPT')
+K_COUNT = int(os.getenv('K_COUNT'))
+COUNT_FROM_SAME_SOURCE = os.getenv('COUNT_FROM_SAME_SOURCE')
+if not COUNT_FROM_SAME_SOURCE:
+    COUNT_FROM_SAME_SOURCE = K_COUNT
+else:
+    COUNT_FROM_SAME_SOURCE = int(COUNT_FROM_SAME_SOURCE)
 
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
@@ -53,11 +59,17 @@ def generate_response_chat(message_list):
 
         # Get the most similar documents to the last message
         try:
-            docs = faiss_index.similarity_search(query=last_message["content"], k=1)
+            source_counts = dict()
+            docs = faiss_index.similarity_search(query=last_message["content"], k=K_COUNT)
 
-            updated_content = last_message["content"] + "\n\n"
+            updated_content = "Begin of " + DOCUMENTATION_NAME + "\n\n"
             for doc in docs:
+                current_source = doc.metadata['source']
+                source_counts[current_source] = source_counts.get(current_source, 0) + 1
+                if source_counts[current_source] > COUNT_FROM_SAME_SOURCE:
+                    continue
                 updated_content += doc.page_content + "\n\n"
+            updated_content += "End of " + DOCUMENTATION_NAME + "\n\nQuestion: " + last_message["content"]
         except Exception as e:
             print(f"Error while fetching : {e}")
             updated_content = last_message["content"]
@@ -75,7 +87,7 @@ def generate_response_chat(message_list):
     # Send request to GPT-3 (replace with actual GPT-3 API call)
     gpt3_response = openai.ChatCompletion.create(
         model="gpt-4",
-        temperature=0.1,
+        temperature=0,
         messages=[
                      {"role": "system",
                       "content": SYSTEM_PROMPT},
@@ -90,7 +102,6 @@ def generate_response_chat(message_list):
 def conversation_tracking(text_message, user_id):
     """
     Make remember all the conversation
-    :param old_model: Open AI model
     :param user_id: telegram user id
     :param text_message: text message
     :return: str
