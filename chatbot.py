@@ -33,6 +33,10 @@ if not COUNT_FROM_SAME_SOURCE:
 else:
     COUNT_FROM_SAME_SOURCE = int(COUNT_FROM_SAME_SOURCE)
 
+OPEN_AI_MODEL = os.getenv('OPEN_AI_MODEL')
+if not OPEN_AI_MODEL:
+    OPEN_AI_MODEL = 'gpt-4'
+
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
 # Store the last 10 conversations for each user
@@ -86,7 +90,7 @@ def generate_response_chat(message_list):
     openai.api_key = OPENAI_API_KEY
     # Send request to GPT-3 (replace with actual GPT-3 API call)
     gpt3_response = openai.ChatCompletion.create(
-        model="gpt-4",
+        model=OPEN_AI_MODEL,
         temperature=0,
         messages=[
                      {"role": "system",
