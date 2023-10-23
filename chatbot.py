@@ -94,7 +94,7 @@ def generate_response_chat(message_list):
                  ] + message_list
     )
 
-    assistant_response = gpt3_response["choices"][0]["message"]["content"].strip()
+    assistant_response = gpt3_response["choices"][0]["message"]["content"].strip().replace("Ответ: ", "")
 
     return assistant_response
 
