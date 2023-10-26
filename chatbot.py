@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("env", help="name of env", default="")
 args = parser.parse_args()
 
-load_dotenv('./'+args.env)
+load_dotenv('./.env.'+args.env)
 
 app = Celery('chatbot', broker=os.getenv('CELERY_BROKER_URL'))
 
