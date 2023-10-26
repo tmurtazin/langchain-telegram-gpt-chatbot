@@ -4,6 +4,8 @@ import requests
 import telebot
 import pickle
 import time
+import argparse
+
 from langchain.vectorstores import FAISS as BaseFAISS
 
 from dotenv import load_dotenv
@@ -14,7 +16,11 @@ import speech_recognition as sr
 
 from langchain.embeddings import OpenAIEmbeddings
 
-load_dotenv()
+parser = argparse.ArgumentParser()
+parser.add_argument("env", help="name of env", default="")
+args = parser.parse_args()
+
+load_dotenv('./'+args.env)
 
 app = Celery('chatbot', broker=os.getenv('CELERY_BROKER_URL'))
 

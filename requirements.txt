@@ -10,3 +10,5 @@ gTTS
 pydub
 langchain
 tiktoken
+flask
+argparse

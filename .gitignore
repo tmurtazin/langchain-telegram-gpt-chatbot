@@ -2,6 +2,7 @@ venv
 /venv
 .idea
 .env
+.env.*
 models
 /models
 __pycache__
