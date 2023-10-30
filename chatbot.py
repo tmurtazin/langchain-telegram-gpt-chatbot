@@ -38,6 +38,11 @@ if not COUNT_FROM_SAME_SOURCE:
     COUNT_FROM_SAME_SOURCE = K_COUNT
 else:
     COUNT_FROM_SAME_SOURCE = int(COUNT_FROM_SAME_SOURCE)
+ALL_COUNT = os.getenv('ALL_COUNT')
+if not ALL_COUNT:
+    ALL_COUNT = K_COUNT
+else:
+    ALL_COUNT = int(ALL_COUNT)
 
 OPEN_AI_MODEL = os.getenv('OPEN_AI_MODEL')
 if not OPEN_AI_MODEL:
@@ -70,6 +75,7 @@ def generate_response_chat(message_list):
         # Get the most similar documents to the last message
         try:
             source_counts = dict()
+            all_count = 0
             docs = faiss_index.similarity_search(query=last_message["content"], k=K_COUNT)
 
             updated_content = "Begin of " + DOCUMENTATION_NAME + "\n\n"
@@ -78,6 +84,9 @@ def generate_response_chat(message_list):
                 source_counts[current_source] = source_counts.get(current_source, 0) + 1
                 if source_counts[current_source] > COUNT_FROM_SAME_SOURCE:
                     continue
+                if all_count > ALL_COUNT:
+                    break
+                all_count = all_count + 1
                 updated_content += doc.page_content + "\n\n"
             updated_content += "End of " + DOCUMENTATION_NAME + "\n\nQuestion: " + last_message["content"]
         except Exception as e:
