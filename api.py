@@ -18,6 +18,7 @@ args = parser.parse_args()
 load_dotenv('./.env.' + args.env)
 
 app = Flask(__name__)
+app.json.ensure_ascii = False
 celery = Celery('api', broker=os.getenv('CELERY_BROKER_URL'))
 
 OPENAI_API_KEY = os.getenv('OPEN_AI_KEY')
@@ -178,7 +179,7 @@ def api_reply():
     response = conversation_tracking(question_text, user_id)
 
     # Reply to message
-    return jsonify({'success': True, 'question_id': question_id, 'answer_text': response})
+    return ({'success': True, 'question_id': question_id, 'answer_text': response})
 
 
 if __name__ == "__main__":
