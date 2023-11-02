@@ -1,31 +1,46 @@
 import os
 import openai
-import requests
-import telebot
 import pickle
-import time
+import argparse
+
 from langchain.vectorstores import FAISS as BaseFAISS
 
 from dotenv import load_dotenv
-from gtts import gTTS
-from pydub import AudioSegment
 from celery import Celery
-import speech_recognition as sr
 
 from langchain.embeddings import OpenAIEmbeddings
+from flask import Flask, request, jsonify
 
-load_dotenv()
+parser = argparse.ArgumentParser()
+parser.add_argument("env", help="name of env", default="")
+args = parser.parse_args()
 
-SYSTEM_PROMPT = os.getenv('SYSTEM_PROMPT')
+load_dotenv('./.env.' + args.env)
 
-app = Celery('chatbot', broker=os.getenv('CELERY_BROKER_URL'))
-
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-
-bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
+app = Flask(__name__)
+celery = Celery('api', broker=os.getenv('CELERY_BROKER_URL'))
 
 OPENAI_API_KEY = os.getenv('OPEN_AI_KEY')
 MODEL_NAME = os.getenv('MODEL_NAME')
+DOCUMENTATION_NAME = os.getenv('DOCUMENTATION_NAME')
+SYSTEM_PROMPT = os.getenv('SYSTEM_PROMPT')
+K_COUNT = int(os.getenv('K_COUNT'))
+COUNT_FROM_SAME_SOURCE = os.getenv('COUNT_FROM_SAME_SOURCE')
+if not COUNT_FROM_SAME_SOURCE:
+    COUNT_FROM_SAME_SOURCE = K_COUNT
+else:
+    COUNT_FROM_SAME_SOURCE = int(COUNT_FROM_SAME_SOURCE)
+ALL_COUNT = os.getenv('ALL_COUNT')
+if not ALL_COUNT:
+    ALL_COUNT = K_COUNT
+else:
+    ALL_COUNT = int(ALL_COUNT)
+
+OPEN_AI_MODEL = os.getenv('OPEN_AI_MODEL')
+if not OPEN_AI_MODEL:
+    OPEN_AI_MODEL = 'gpt-4'
+
+API_KEY = os.getenv('API_KEY')
 
 embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
 
@@ -45,7 +60,7 @@ faiss_obj_path = "models/" + MODEL_NAME + ".pickle"
 faiss_index = FAISS.load(faiss_obj_path)
 
 
-# @app.task
+# @celery.task
 def generate_response_chat(message_list):
     if faiss_index:
         # Add extra text to the content of the last message
@@ -53,12 +68,21 @@ def generate_response_chat(message_list):
 
         # Get the most similar documents to the last message
         try:
-            docs = faiss_index.similarity_search(query=last_message["content"], k=3)
+            source_counts = dict()
+            all_count = 0
+            docs = faiss_index.similarity_search(query=last_message["content"], k=K_COUNT)
 
-            updated_content = "Begin of documentation\n\n"
+            updated_content = "Begin of " + DOCUMENTATION_NAME + "\n\n"
             for doc in docs:
+                current_source = doc.metadata['source']
+                source_counts[current_source] = source_counts.get(current_source, 0) + 1
+                if source_counts[current_source] > COUNT_FROM_SAME_SOURCE:
+                    continue
+                if all_count > ALL_COUNT:
+                    break
+                all_count = all_count + 1
                 updated_content += doc.page_content + "\n\n"
-            updated_content += "End of documentation\n\nQuestion: " + last_message["content"]
+            updated_content += "End of " + DOCUMENTATION_NAME + "\n\nQuestion: " + last_message["content"]
         except Exception as e:
             print(f"Error while fetching : {e}")
             updated_content = last_message["content"]
@@ -75,7 +99,7 @@ def generate_response_chat(message_list):
     openai.api_key = OPENAI_API_KEY
     # Send request to GPT-3 (replace with actual GPT-3 API call)
     gpt3_response = openai.ChatCompletion.create(
-        model="gpt-4",
+        model=OPEN_AI_MODEL,
         temperature=0,
         messages=[
                      {"role": "system",
@@ -83,7 +107,7 @@ def generate_response_chat(message_list):
                  ] + message_list
     )
 
-    assistant_response = gpt3_response["choices"][0]["message"]["content"].strip()
+    assistant_response = gpt3_response["choices"][0]["message"]["content"].strip().replace("Ответ: ", "")
 
     return assistant_response
 
@@ -132,88 +156,33 @@ def conversation_tracking(text_message, user_id):
     return response
 
 
-@bot.message_handler(commands=["start", "help"])
-def start(message):
-    if message.text.startswith("/help"):
-        bot.reply_to(message, "/clear - Clears old "
-                              "conversations\nsend text to get replay\nsend voice to do voice"
-                              "conversation")
-    else:
-        bot.reply_to(message, "Напишите свой вопрос или /help для других команд")
+@app.route('/api/reply', methods=["POST"])
+def api_reply():
+    api_key = request.json.get('api_key', None)
+    if api_key != API_KEY:
+        return jsonify({'success': False, 'error': 'wrong api key'})
 
+    user_id = request.json.get('user_id', None)
+    question_id = request.json.get('question_id', None)
+    question_text = request.json.get('question_text', None)
 
-# Define a function to handle voice messages
-@bot.message_handler(content_types=["voice"])
-def handle_voice(message):
-    user_id = message.chat.id
-    # Download the voice message file from Telegram servers
-    file_info = bot.get_file(message.voice.file_id)
-    file = requests.get("https://api.telegram.org/file/bot{0}/{1}".format(
-        TELEGRAM_BOT_TOKEN, file_info.file_path))
-
-    # Save the file to disk
-    with open("voice_message.ogg", "wb") as f:
-        f.write(file.content)
-
-    # Use pydub to read in the audio file and convert it to WAV format
-    sound = AudioSegment.from_file("voice_message.ogg", format="ogg")
-    sound.export("voice_message.wav", format="wav")
-
-    # Use SpeechRecognition to transcribe the voice message
-    r = sr.Recognizer()
-    with sr.AudioFile("voice_message.wav") as source:
-        audio_data = r.record(source)
-        text = r.recognize_google(audio_data, language='ru-RU')
-
-    # Generate response
-    replay_text = conversation_tracking(text, user_id)
-
-    bot.reply_to(message, replay_text)
-
-    # Use Google Text-to-Speech to convert the text to speech
-    tts = gTTS(replay_text, lang='ru')
-    tts.save("voice_message.mp3")
-
-    # Use pydub to convert the MP3 file to the OGG format
-    sound = AudioSegment.from_mp3("voice_message.mp3")
-    sound.export("voice_message_replay.ogg", format="mp3")
-
-    # Send the transcribed text back to the user as a voice
-    voice = open("voice_message_replay.ogg", "rb")
-    bot.send_voice(message.chat.id, voice)
-    voice.close()
-
-    # Delete the temporary files
-    os.remove("voice_message.ogg")
-    os.remove("voice_message.wav")
-    os.remove("voice_message.mp3")
-    os.remove("voice_message_replay.ogg")
-
-
-@bot.message_handler(func=lambda message: True)
-def echo_message(message):
-    user_id = message.chat.id
+    if not user_id or not question_text:
+        return jsonify({'success': False, 'error': 'wrong params'})
 
     # Handle /clear command
-    if message.text == '/clear':
+    if question_text == '/clear':
         conversations[user_id] = {'conversations': [], 'responses': []}
-        bot.reply_to(message, "Conversations and responses cleared!")
+        jsonify({'success': True, 'question_id': question_id, 'answer_text': "Conversations and responses cleared!"})
         return
 
-    response = conversation_tracking(message.text, user_id)
+    response = conversation_tracking(question_text, user_id)
 
     # Reply to message
-    bot.reply_to(message, response)
+    return jsonify({'success': True, 'question_id': question_id, 'answer_text': response})
 
 
 if __name__ == "__main__":
-    print("Starting bot...")
-    print("Bot Started")
-    print("Press Ctrl + C to stop bot")
-    while True:
-        try:
-            bot.polling(none_stop=True, interval=0)
-        except Exception as e:
-            print(e)
-            time.sleep(5)
-            continue
+    print("Starting API...")
+    print("API Started")
+    print("Press Ctrl + C to stop API")
+    app.run(debug=True)
