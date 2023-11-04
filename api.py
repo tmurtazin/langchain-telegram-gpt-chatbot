@@ -163,12 +163,16 @@ def api_reply():
     if api_key != API_KEY:
         return jsonify({'success': False, 'error': 'wrong api key'})
 
+    embeddings_name = request.json.get('embeddings', None)
     user_id = request.json.get('user_id', None)
     question_id = request.json.get('question_id', None)
     question_text = request.json.get('question_text', None)
 
     if not user_id or not question_text:
         return jsonify({'success': False, 'error': 'wrong params'})
+
+    if embeddings_name != MODEL_NAME:
+        return jsonify({'success': False, 'error': 'wrong embeddings'})
 
     # Handle /clear command
     if question_text == '/clear':
